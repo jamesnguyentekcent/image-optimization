@@ -5,7 +5,7 @@ import { ImageOptimizationStack } from '../lib/image-optimization-stack';
 
 
 const app = new cdk.App();
-new ImageOptimizationStack(app, 'ImgTransformationStack', {
+new ImageOptimizationStack(app, 'spl-tp-crafter-', {
 
 });
 
