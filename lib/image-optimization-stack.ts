@@ -71,7 +71,7 @@ export class ImageOptimizationStack extends Stack {
         value: originalImageBucket.bucketName
       });
     } else {
-      originalImageBucket = new s3.Bucket(this, 's3-sample-original-image-bucket', {
+      originalImageBucket = new s3.Bucket(this, 's3-original-image-bucket', {
         removalPolicy: RemovalPolicy.DESTROY,
         blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
         encryption: s3.BucketEncryption.S3_MANAGED,
@@ -83,7 +83,8 @@ export class ImageOptimizationStack extends Stack {
         destinationBucket: originalImageBucket,
         destinationKeyPrefix: 'images/rio/',
       });
-      var sampleWebsiteBucket = new s3.Bucket(this, 's3-sample-website-bucket', {
+      var sampleWebsiteBucket = new s3.Bucket(this, 's3-website-bucket', {
+        bucketName: 's3-website-bucket'
         removalPolicy: RemovalPolicy.DESTROY,
         blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
         encryption: s3.BucketEncryption.S3_MANAGED,
