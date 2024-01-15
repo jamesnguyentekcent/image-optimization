@@ -84,7 +84,7 @@ export class ImageOptimizationStack extends Stack {
         destinationKeyPrefix: 'images/rio/',
       });
       var sampleWebsiteBucket = new s3.Bucket(this, 's3-website-bucket', {
-        bucketName: 's3-website-bucket',
+        bucketName: 'tekcent-s3-website-bucket',
         removalPolicy: RemovalPolicy.DESTROY,
         blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
         encryption: s3.BucketEncryption.S3_MANAGED,
