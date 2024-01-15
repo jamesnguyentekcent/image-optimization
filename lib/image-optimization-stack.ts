@@ -46,7 +46,6 @@ export class ImageOptimizationStack extends Stack {
     super(scope, id, props);
 
     // Change stack parameters based on provided context
-    STORE_TRANSFORMED_IMAGES = this.node.tryGetContext('STORE_TRANSFORMED_IMAGES') || STORE_TRANSFORMED_IMAGES;
     S3_TRANSFORMED_IMAGE_EXPIRATION_DURATION = this.node.tryGetContext('S3_TRANSFORMED_IMAGE_EXPIRATION_DURATION') || S3_TRANSFORMED_IMAGE_EXPIRATION_DURATION;
     S3_TRANSFORMED_IMAGE_CACHE_TTL = this.node.tryGetContext('S3_TRANSFORMED_IMAGE_CACHE_TTL') || S3_TRANSFORMED_IMAGE_CACHE_TTL;
     S3_IMAGE_BUCKET_NAME = this.node.tryGetContext('S3_IMAGE_BUCKET_NAME') || S3_IMAGE_BUCKET_NAME;
@@ -62,70 +61,39 @@ export class ImageOptimizationStack extends Stack {
     // For the bucket having original images, either use an external one, or create one with some samples photos.
     var originalImageBucket;
     var transformedImageBucket;
-    var sampleWebsiteDelivery;
 
-    if (S3_IMAGE_BUCKET_NAME) {
-      originalImageBucket = s3.Bucket.fromBucketName(this, 'imported-original-image-bucket', S3_IMAGE_BUCKET_NAME);
-      new CfnOutput(this, 'OriginalImagesS3Bucket', {
-        description: 'S3 bucket where original images are stored',
-        value: originalImageBucket.bucketName
-      });
-    } else {
-      originalImageBucket = new s3.Bucket(this, 's3-original-image-bucket', {
-        removalPolicy: RemovalPolicy.DESTROY,
-        blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
-        encryption: s3.BucketEncryption.S3_MANAGED,
-        enforceSSL: true,
-        autoDeleteObjects: true,
-      });
-      new s3deploy.BucketDeployment(this, 'DeployWebsite', {
-        sources: [s3deploy.Source.asset('./image-sample')],
-        destinationBucket: originalImageBucket,
-        destinationKeyPrefix: 'images/rio/',
-      });
-      var sampleWebsiteBucket = new s3.Bucket(this, 's3-website-bucket', {
-        bucketName: 'tekcent-s3-website-bucket',
-        removalPolicy: RemovalPolicy.DESTROY,
-        blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
-        encryption: s3.BucketEncryption.S3_MANAGED,
-        enforceSSL: true,
-        autoDeleteObjects: true,
-      });
+	// create original image bucket
+    originalImageBucket = new s3.Bucket(this, 's3-original', {
+	  bucketName: 'spl-tp-crafter-s3-original',
+      removalPolicy: RemovalPolicy.DESTROY,
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      encryption: s3.BucketEncryption.S3_MANAGED,
+      enforceSSL: true,
+      autoDeleteObjects: true,
+    });
+    new s3deploy.BucketDeployment(this, 'DeployWebsite', {
+      sources: [s3deploy.Source.asset('./image-sample')],
+      destinationBucket: originalImageBucket,
+      destinationKeyPrefix: 'images/rio/',
+    });
+    new CfnOutput(this, 'OriginalImagesS3Bucket', {
+      description: 'S3 bucket where original images are stored',
+      value: originalImageBucket.bucketName
+    });
 
-      sampleWebsiteDelivery = new cloudfront.Distribution(this, 'websiteDeliveryDistribution', {
-        comment: 'image optimization - sample website',
-        defaultRootObject: 'index.html',
-        defaultBehavior: {
-          origin: new origins.S3Origin(sampleWebsiteBucket),
-          viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
-        }
-      });
-      new CfnOutput(this, 'SampleWebsiteDomain', {
-        description: 'Sample website domain',
-        value: sampleWebsiteDelivery.distributionDomainName
-      });
-      new CfnOutput(this, 'SampleWebsiteS3Bucket', {
-        description: 'S3 bucket use by the sample website',
-        value: sampleWebsiteBucket.bucketName
-      });
-      new CfnOutput(this, 'OriginalImagesS3Bucket', {
-        description: 'S3 bucket where original images are stored',
-        value: originalImageBucket.bucketName
-      });
-    }
 
-    // create bucket for transformed images if enabled in the architecture
-    if (STORE_TRANSFORMED_IMAGES === 'true') {
-      transformedImageBucket = new s3.Bucket(this, 's3-transformed-image-bucket', {
-        removalPolicy: RemovalPolicy.DESTROY,
-        autoDeleteObjects: true,
-        lifecycleRules: [
-          {
-            expiration: Duration.days(parseInt(S3_TRANSFORMED_IMAGE_EXPIRATION_DURATION)),
-          },
-        ],
-      });
-    }
+    // create bucket for transformed images
+    transformedImageBucket = new s3.Bucket(this, 's3-transformed', {
+	  bucketName: 'spl-tp-crafter-s3-transformed',
+      removalPolicy: RemovalPolicy.DESTROY,
+      autoDeleteObjects: true,
+      lifecycleRules: [
+        {
+          expiration: Duration.days(parseInt(S3_TRANSFORMED_IMAGE_EXPIRATION_DURATION)),
+        },
+      ],
+    });
+    
 
     // prepare env variable for Lambda 
     var lambdaEnv: LambdaEnv = {
@@ -147,6 +115,7 @@ export class ImageOptimizationStack extends Stack {
 
     // Create Lambda for image processing
     var lambdaProps = {
+      functionName: 'spl-tp-crafter-s3-image-processing',
       runtime: lambda.Runtime.NODEJS_16_X,
       handler: 'index.handler',
       code: lambda.Code.fromAsset('functions/image-processing'),
@@ -201,6 +170,7 @@ export class ImageOptimizationStack extends Stack {
     // attach iam policy to the role assumed by Lambda
     imageProcessing.role?.attachInlinePolicy(
       new iam.Policy(this, 'read-write-bucket-policy', {
+		policyName: 'spl-tp-crafter-s3-read-write-bucket-policy',
         statements: iamPolicyStatements,
       }),
     );
@@ -208,13 +178,14 @@ export class ImageOptimizationStack extends Stack {
     // Create a CloudFront Function for url rewrites
     const urlRewriteFunction = new cloudfront.Function(this, 'urlRewrite', {
       code: cloudfront.FunctionCode.fromFile({ filePath: 'functions/url-rewrite/index.js', }),
-      functionName: `urlRewriteFunction${this.node.addr}`,
+      functionName: 'spl-tp-crafter-s3-url-rewrite',
     });
 
     var imageDeliveryCacheBehaviorConfig: ImageDeliveryCacheBehaviorConfig = {
       origin: imageOrigin,
       viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
       cachePolicy: new cloudfront.CachePolicy(this, `ImageCachePolicy${this.node.addr}`, {
+	    cachePolicyName: 'spl-tp-crafter-s3-cache-policy',
         defaultTtl: Duration.hours(24),
         maxTtl: Duration.days(365),
         minTtl: Duration.seconds(0),
@@ -229,7 +200,7 @@ export class ImageOptimizationStack extends Stack {
     if (CLOUDFRONT_CORS_ENABLED === 'true') {
       // Creating a custom response headers policy. CORS allowed for all origins.
       const imageResponseHeadersPolicy = new cloudfront.ResponseHeadersPolicy(this, `ResponseHeadersPolicy${this.node.addr}`, {
-        responseHeadersPolicyName: 'ImageResponsePolicy',
+        responseHeadersPolicyName: 'spl-tp-crafter-s3-image-response-policy',
         corsBehavior: {
           accessControlAllowCredentials: false,
           accessControlAllowHeaders: ['*'],
@@ -248,13 +219,13 @@ export class ImageOptimizationStack extends Stack {
       });
       imageDeliveryCacheBehaviorConfig.responseHeadersPolicy = imageResponseHeadersPolicy;
     }
-    const imageDelivery = new cloudfront.Distribution(this, 'imageDeliveryDistribution', {
-      comment: 'image optimization - image delivery',
+    const imageDelivery = new cloudfront.Distribution(this, 'delivery', {
+      comment: 'SPL TP Crafter CloudFront Delivery',
       defaultBehavior: imageDeliveryCacheBehaviorConfig
     });
 
     new CfnOutput(this, 'ImageDeliveryDomain', {
-      description: 'Domain name of image delivery',
+      description: 'Domain name of delivery distribution',
       value: imageDelivery.distributionDomainName
     });
   }
