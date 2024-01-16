@@ -74,7 +74,7 @@ export class ImageOptimizationStack extends Stack {
     new s3deploy.BucketDeployment(this, 'DeployWebsite', {
       sources: [s3deploy.Source.asset('./image-sample')],
       destinationBucket: originalImageBucket,
-      destinationKeyPrefix: 'images/rio/',
+      destinationKeyPrefix: 'sample/',
     });
     new CfnOutput(this, 'OriginalImagesS3Bucket', {
       description: 'S3 bucket where original images are stored',
