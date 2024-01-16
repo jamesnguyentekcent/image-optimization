@@ -12,6 +12,8 @@ import { createHash } from 'crypto';
 var STORE_TRANSFORMED_IMAGES = 'true';
 // Parameters of S3 bucket where original images are stored
 var S3_IMAGE_BUCKET_NAME: string;
+var AUTO_TRANSFORM_IMAGE_SIZES = 'width=360';
+var AUTO_TRANSFORM_IMAGE_FORMATS = 'jpeg';
 // CloudFront parameters
 var CLOUDFRONT_ORIGIN_SHIELD_REGION = getOriginShieldRegion(process.env.AWS_REGION || process.env.CDK_DEFAULT_REGION || 'us-east-1');
 var CLOUDFRONT_CORS_ENABLED = 'true';
@@ -39,6 +41,8 @@ type LambdaEnv = {
   transformedImageCacheTTL: string,
   secretKey: string,
   maxImageSize: string,
+  autoTransformImageSizes: string,
+  autoTransformImageFormats: string
 }
 
 export class ImageOptimizationStack extends Stack {
@@ -49,6 +53,8 @@ export class ImageOptimizationStack extends Stack {
     S3_TRANSFORMED_IMAGE_EXPIRATION_DURATION = this.node.tryGetContext('S3_TRANSFORMED_IMAGE_EXPIRATION_DURATION') || S3_TRANSFORMED_IMAGE_EXPIRATION_DURATION;
     S3_TRANSFORMED_IMAGE_CACHE_TTL = this.node.tryGetContext('S3_TRANSFORMED_IMAGE_CACHE_TTL') || S3_TRANSFORMED_IMAGE_CACHE_TTL;
     S3_IMAGE_BUCKET_NAME = this.node.tryGetContext('S3_IMAGE_BUCKET_NAME') || S3_IMAGE_BUCKET_NAME;
+    AUTO_TRANSFORM_IMAGE_SIZES = this.node.tryGetContext('AUTO_TRANSFORM_IMAGE_SIZES') || AUTO_TRANSFORM_IMAGE_SIZES;
+    AUTO_TRANSFORM_IMAGE_FORMATS = this.node.tryGetContext('AUTO_TRANSFORM_IMAGE_FORMATS') || AUTO_TRANSFORM_IMAGE_FORMATS;
     CLOUDFRONT_ORIGIN_SHIELD_REGION = this.node.tryGetContext('CLOUDFRONT_ORIGIN_SHIELD_REGION') || CLOUDFRONT_ORIGIN_SHIELD_REGION;
     CLOUDFRONT_CORS_ENABLED = this.node.tryGetContext('CLOUDFRONT_CORS_ENABLED') || CLOUDFRONT_CORS_ENABLED;
     LAMBDA_MEMORY = this.node.tryGetContext('LAMBDA_MEMORY') || LAMBDA_MEMORY;
@@ -101,6 +107,8 @@ export class ImageOptimizationStack extends Stack {
       transformedImageCacheTTL: S3_TRANSFORMED_IMAGE_CACHE_TTL,
       secretKey: SECRET_KEY,
       maxImageSize: MAX_IMAGE_SIZE,
+      autoTransformImageSizes: AUTO_TRANSFORM_IMAGE_SIZES,
+      autoTransformImageFormats: AUTO_TRANSFORM_IMAGE_FORMATS,
     };
     if (transformedImageBucket) lambdaEnv.transformedImageBucketName = transformedImageBucket.bucketName;
 
