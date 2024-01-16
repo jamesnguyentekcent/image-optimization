@@ -11,8 +11,8 @@ const S3_TRANSFORMED_IMAGE_BUCKET = process.env.transformedImageBucketName;
 const TRANSFORMED_IMAGE_CACHE_TTL = process.env.transformedImageCacheTTL;
 
 // For image auto resizing only
-const PREDEFINED_TRANSFORMED_IMAGE_SIZES = process.env.predefinedTransformedImageSizes;
-const PREDEFINED_TRANSFORMED_IMAGE_FORMATS = process.env.predefinedTransformedImageFormats;
+const AUTO_TRANSFORM_IMAGE_SIZES = process.env.autoTransformImageSizes;
+const AUTO_TRANSFORM_IMAGE_FORMATS = process.env.autoTransformImageFormats;
 
 const SECRET_KEY = process.env.secretKey;
 const MAX_IMAGE_SIZE = parseInt(process.env.maxImageSize);
@@ -25,13 +25,13 @@ exports.handler = async (event) => {
     {
 		originalImagePath = event.Records[0].s3.object.key;
 		// Expected sample value: 'width=360&height=270;height=480;width=1280'
-		const predefinedTransformedImageSizes = PREDEFINED_TRANSFORMED_IMAGE_SIZES.split(';');
+		const autoTransformImageSizes = AUTO_TRANSFORM_IMAGE_SIZES.split(';');
 		// Expected sample value: 'jpeg;avif;webp'
-		const predefinedTransformedImageFormats = PREDEFINED_TRANSFORMED_IMAGE_FORMATS.split(';');
+		const autoTransformImageFormats = AUTO_TRANSFORM_IMAGE_FORMATS.split(';');
 
 		// Handling image transformations
-		predefinedTransformedImageSizes.forEach(async (size) => {
-			predefinedTransformedImageFormats.forEach(async (format) => {
+		autoTransformImageSizes.forEach(async (size) => {
+			autoTransformImageFormats.forEach(async (format) => {
 				const operationsPrefix = `${size},format=${format}`;
 				await transformImage(originalImagePath, operationsPrefix); });});
     } else {
