@@ -18,23 +18,26 @@ const SECRET_KEY = process.env.secretKey;
 const MAX_IMAGE_SIZE = parseInt(process.env.maxImageSize);
 
 exports.handler = async (event) => {
-	let originalImagePath;
-	let operationsPrefix;
+    let originalImagePath;
+    let operationsPrefix;
+	console.log('Start the Image Resize')
 	// Get the object from the event and show its content type
     if(event.Records != null && event.Records[0].eventName.includes('ObjectCreated'))
     {
+		console.log('S3 Event')
 		originalImagePath = event.Records[0].s3.object.key;
-		// Expected sample value: 'width=360&height=270;height=480;width=1280'
+		// Expected sample value: 'org;width=360&height=270;height=480;width=1280'
 		const autoTransformImageSizes = AUTO_TRANSFORM_IMAGE_SIZES.split(';');
-		// Expected sample value: 'jpeg;avif;webp'
+		// Expected sample value: 'org;jpeg;avif;webp'
 		const autoTransformImageFormats = AUTO_TRANSFORM_IMAGE_FORMATS.split(';');
-
+		console.log('Content: ', originalImagePath, autoTransformImageSizes, autoTransformImageFormats)
 		// Handling image transformations
 		autoTransformImageSizes.forEach(async (size) => {
 			autoTransformImageFormats.forEach(async (format) => {
 				const operationsPrefix = `${size},format=${format}`;
 				await transformImage(originalImagePath, operationsPrefix); });});
     } else {
+		console.log('On-the fly approach')
 		// First validate if the request is coming from CloudFront
 		if (!event.headers['x-origin-secret-header'] || !(event.headers['x-origin-secret-header'] === SECRET_KEY)) return sendError(403, 'Request unauthorized', event);
 		// Validate if this is a GET request
@@ -54,6 +57,7 @@ exports.handler = async (event) => {
 
 // Handling image transformations
 async function transformImage(originalImagePath, operationsPrefix) {
+	console.log('Start the transform image')
 	var startTime = performance.now();
 	
     // Downloading original image
@@ -65,7 +69,8 @@ async function transformImage(originalImagePath, operationsPrefix) {
     } catch (error) {
         return sendError(500, 'error downloading original image', error);
     }
-	
+	console.log('Start the transform image1')
+
 	var operationsPrefixArray = event.requestContext.http.path.split('/');
     let transformedImage = Sharp(originalImage.Body, { failOn: 'none', animated: true });
     // Get image orientation to rotate if needed
@@ -79,10 +84,14 @@ async function transformImage(originalImagePath, operationsPrefix) {
         // check if resizing is requested
         var resizingOptions = {};
         if (operationsJSON['width']) resizingOptions.width = parseInt(operationsJSON['width']);
+			console.log('Start the transform image2')
+
         if (operationsJSON['height']) resizingOptions.height = parseInt(operationsJSON['height']);
         if (resizingOptions) transformedImage = transformedImage.resize(resizingOptions);
         // check if rotation is needed
         if (imageMetadata.orientation) transformedImage = transformedImage.rotate();
+			console.log('Start the transform image3')
+
         // check if formatting is requested
         if (operationsJSON['format']) {
             var isLossy = false;
@@ -100,14 +109,18 @@ async function transformImage(originalImagePath, operationsPrefix) {
                 });
             } else transformedImage = transformedImage.toFormat(operationsJSON['format']);
         }
+			console.log('Start the transform image4')
+
         transformedImage = await transformedImage.toBuffer();
     } catch (error) {
         return sendError(500, 'error transforming image', error);
     }
     timingLog = timingLog + ',img-transform;dur=' + parseInt(performance.now() - startTime);
-    
+    	console.log('Start the transform image5')
+
     // Graceful handleing of generated images bigger than a specified limit (e.g. Lambda output object limit)
     const imageTooBig = Buffer.byteLength(transformedImage) > MAX_IMAGE_SIZE;
+	console.log('Start the transform image6')
 
     // upload transformed image back to S3 if required in the architecture
     if (S3_TRANSFORMED_IMAGE_BUCKET) {
@@ -137,7 +150,8 @@ async function transformImage(originalImagePath, operationsPrefix) {
         } catch (error) {
             logError('Could not upload transformed image to S3', error);
         }
-        
+        	console.log('Start the transform image7')
+
     }
 
     // Return error if the image is too big and a redirection to the generated image was not possible, else return transformed image
@@ -153,6 +167,8 @@ async function transformImage(originalImagePath, operationsPrefix) {
             'Server-Timing': timingLog
         }
     };
+		console.log('Start the transform image8')
+
 }
 
 function sendError(statusCode, body, error) {
