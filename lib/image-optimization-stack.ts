@@ -7,7 +7,8 @@ import { getOriginShieldRegion } from './origin-shield';
 import { createHash } from 'crypto';
 
 // Stack Parameters
-var SERVICE_PREFIX = Stack.stackName;
+const stack = cdk.Stack.of(this);
+var SERVICE_PREFIX = stack.stackName;
 
 // Parameters of S3 bucket where original images are stored
 var S3_IMAGE_BUCKET_NAME: string;
