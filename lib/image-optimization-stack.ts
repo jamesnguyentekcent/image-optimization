@@ -5,6 +5,7 @@ import { Fn, Stack, StackProps, RemovalPolicy, aws_s3 as s3, aws_s3_deployment a
 import { Construct } from 'constructs';
 import { getOriginShieldRegion } from './origin-shield';
 import { createHash } from 'crypto';
+import * as cdk from "@aws-cdk/core";
 
 // Stack Parameters
 const stack = cdk.Stack.of(this);
