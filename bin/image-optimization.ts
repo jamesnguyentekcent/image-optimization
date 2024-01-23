@@ -5,7 +5,5 @@ import { ImageOptimizationStack } from '../lib/image-optimization-stack';
 
 
 const app = new cdk.App();
-new ImageOptimizationStack(app, 'spl-tp-crafter', {
-
-});
-
+const stackName = app.node.tryGetContext('STACK_NAME')
+new ImageOptimizationStack(app, 'spl-tp-crafter', {stackName: stackName});

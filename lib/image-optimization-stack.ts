@@ -7,13 +7,14 @@ import { getOriginShieldRegion } from './origin-shield';
 import { createHash } from 'crypto';
 
 // Stack Parameters
+var SERVICE_PREFIX = Stack.stackName;
 
-// related to architecture. If set to false, transformed images are not stored in S3, and all image requests land on Lambda
-var STORE_TRANSFORMED_IMAGES = 'true';
 // Parameters of S3 bucket where original images are stored
 var S3_IMAGE_BUCKET_NAME: string;
-var AUTO_TRANSFORM_IMAGE_SIZES = 'width=360';
-var AUTO_TRANSFORM_IMAGE_FORMATS = 'jpeg';
+var AUTO_TRANSFORM_IMAGE_SIZES = 'org';
+var AUTO_TRANSFORM_IMAGE_FORMATS = 'org';
+var ALLOW_TRANSFORM_IMAGE_WIDTHS = '';
+var ALLOW_TRANSFORM_IMAGE_HEIGHTS = '';
 // CloudFront parameters
 var CLOUDFRONT_ORIGIN_SHIELD_REGION = getOriginShieldRegion(process.env.AWS_REGION || process.env.CDK_DEFAULT_REGION || 'us-east-1');
 var CLOUDFRONT_CORS_ENABLED = 'true';
@@ -42,7 +43,9 @@ type LambdaEnv = {
   secretKey: string,
   maxImageSize: string,
   autoTransformImageSizes: string,
-  autoTransformImageFormats: string
+  autoTransformImageFormats: string,
+  allowTransformImageWidths: string,
+  allowTransformImageHeights: string
 }
 
 export class ImageOptimizationStack extends Stack {
@@ -55,6 +58,8 @@ export class ImageOptimizationStack extends Stack {
     S3_IMAGE_BUCKET_NAME = this.node.tryGetContext('S3_IMAGE_BUCKET_NAME') || S3_IMAGE_BUCKET_NAME;
     AUTO_TRANSFORM_IMAGE_SIZES = this.node.tryGetContext('AUTO_TRANSFORM_IMAGE_SIZES') || AUTO_TRANSFORM_IMAGE_SIZES;
     AUTO_TRANSFORM_IMAGE_FORMATS = this.node.tryGetContext('AUTO_TRANSFORM_IMAGE_FORMATS') || AUTO_TRANSFORM_IMAGE_FORMATS;
+    ALLOW_TRANSFORM_IMAGE_WIDTHS = this.node.tryGetContext('ALLOW_TRANSFORM_IMAGE_WIDTHS') || ALLOW_TRANSFORM_IMAGE_WIDTHS;
+    ALLOW_TRANSFORM_IMAGE_HEIGHTS = this.node.tryGetContext('ALLOW_TRANSFORM_IMAGE_HEIGHTS') || ALLOW_TRANSFORM_IMAGE_HEIGHTS;
     CLOUDFRONT_ORIGIN_SHIELD_REGION = this.node.tryGetContext('CLOUDFRONT_ORIGIN_SHIELD_REGION') || CLOUDFRONT_ORIGIN_SHIELD_REGION;
     CLOUDFRONT_CORS_ENABLED = this.node.tryGetContext('CLOUDFRONT_CORS_ENABLED') || CLOUDFRONT_CORS_ENABLED;
     LAMBDA_MEMORY = this.node.tryGetContext('LAMBDA_MEMORY') || LAMBDA_MEMORY;
@@ -70,7 +75,7 @@ export class ImageOptimizationStack extends Stack {
 
     // create original image bucket
     originalImageBucket = new s3.Bucket(this, 's3-original', {
-      bucketName: 'spl-tp-crafter-s3-original',
+      bucketName: SERVICE_PREFIX + '-s3-original',
       removalPolicy: RemovalPolicy.DESTROY,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       encryption: s3.BucketEncryption.S3_MANAGED,
@@ -90,7 +95,7 @@ export class ImageOptimizationStack extends Stack {
 
     // create bucket for transformed images
     transformedImageBucket = new s3.Bucket(this, 's3-transformed', {
-	  bucketName: 'spl-tp-crafter-s3-transformed',
+	  bucketName: SERVICE_PREFIX + '-s3-transformed',
       removalPolicy: RemovalPolicy.DESTROY,
       autoDeleteObjects: true,
       lifecycleRules: [
@@ -109,6 +114,8 @@ export class ImageOptimizationStack extends Stack {
       maxImageSize: MAX_IMAGE_SIZE,
       autoTransformImageSizes: AUTO_TRANSFORM_IMAGE_SIZES,
       autoTransformImageFormats: AUTO_TRANSFORM_IMAGE_FORMATS,
+      allowTransformImageWidths: ALLOW_TRANSFORM_IMAGE_WIDTHS,
+      allowTransformImageHeights: ALLOW_TRANSFORM_IMAGE_HEIGHTS,
     };
     if (transformedImageBucket) lambdaEnv.transformedImageBucketName = transformedImageBucket.bucketName;
 
@@ -123,8 +130,8 @@ export class ImageOptimizationStack extends Stack {
 
     // Create Lambda for image processing
     var lambdaProps = {
-      functionName: 'spl-tp-crafter-s3-image-processing',
-      runtime: lambda.Runtime.NODEJS_16_X,
+      functionName: SERVICE_PREFIX + '-image-processing',
+      runtime: lambda.Runtime.NODEJS_20_X,
       handler: 'index.handler',
       code: lambda.Code.fromAsset('functions/image-processing'),
       timeout: Duration.seconds(parseInt(LAMBDA_TIMEOUT)),
@@ -165,8 +172,14 @@ export class ImageOptimizationStack extends Stack {
         resources: ['arn:aws:s3:::' + transformedImageBucket.bucketName + '/*'],
       });
       iamPolicyStatements.push(s3WriteTransformedImagesPolicy);
+
+      // write log policy for Lambda on the s3 bucket
+      var s3LogPolicy = new iam.PolicyStatement({
+        actions: ['logs:PutLogEvents', 'logs:CreateLogGroup', 'logs:CreateLogStream'],
+        resources: ['arn:aws:logs:*:*:*'],
+      });
+      iamPolicyStatements.push(s3LogPolicy);
     } else {
-      console.log("else transformedImageBucket");
       imageOrigin = new origins.HttpOrigin(imageProcessingDomainName, {
         originShieldRegion: CLOUDFRONT_ORIGIN_SHIELD_REGION,
         customHeaders: {
@@ -178,7 +191,7 @@ export class ImageOptimizationStack extends Stack {
     // attach iam policy to the role assumed by Lambda
     imageProcessing.role?.attachInlinePolicy(
       new iam.Policy(this, 'read-write-bucket-policy', {
-		policyName: 'spl-tp-crafter-s3-read-write-bucket-policy',
+        policyName: SERVICE_PREFIX + '-read-write-bucket-policy',
         statements: iamPolicyStatements,
       }),
     );
@@ -186,14 +199,14 @@ export class ImageOptimizationStack extends Stack {
     // Create a CloudFront Function for url rewrites
     const urlRewriteFunction = new cloudfront.Function(this, 'urlRewrite', {
       code: cloudfront.FunctionCode.fromFile({ filePath: 'functions/url-rewrite/index.js', }),
-      functionName: 'spl-tp-crafter-s3-url-rewrite',
+      functionName: SERVICE_PREFIX + '-url-rewrite',
     });
 
     var imageDeliveryCacheBehaviorConfig: ImageDeliveryCacheBehaviorConfig = {
       origin: imageOrigin,
       viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
       cachePolicy: new cloudfront.CachePolicy(this, `ImageCachePolicy${this.node.addr}`, {
-	    cachePolicyName: 'spl-tp-crafter-s3-cache-policy',
+	    cachePolicyName: SERVICE_PREFIX + '-cache-policy',
         defaultTtl: Duration.hours(24),
         maxTtl: Duration.days(365),
         minTtl: Duration.seconds(0),
@@ -208,7 +221,7 @@ export class ImageOptimizationStack extends Stack {
     if (CLOUDFRONT_CORS_ENABLED === 'true') {
       // Creating a custom response headers policy. CORS allowed for all origins.
       const imageResponseHeadersPolicy = new cloudfront.ResponseHeadersPolicy(this, `ResponseHeadersPolicy${this.node.addr}`, {
-        responseHeadersPolicyName: 'spl-tp-crafter-s3-image-response-policy',
+        responseHeadersPolicyName: SERVICE_PREFIX + '-image-response-policy',
         corsBehavior: {
           accessControlAllowCredentials: false,
           accessControlAllowHeaders: ['*'],
