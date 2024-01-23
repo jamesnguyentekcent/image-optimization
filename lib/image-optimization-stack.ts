@@ -8,8 +8,7 @@ import { createHash } from 'crypto';
 import * as cdk from 'aws-cdk-lib';
 
 // Stack Parameters
-const stack = cdk.Stack.of(this);
-var SERVICE_PREFIX = stack.stackName;
+var SERVICE_PREFIX = cdk.Aws.STACK_NAME;
 
 // Parameters of S3 bucket where original images are stored
 var S3_IMAGE_BUCKET_NAME: string;
