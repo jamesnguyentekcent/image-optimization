@@ -9,7 +9,7 @@ function handler(event) {
     if (request.querystring) {
         Object.keys(request.querystring).forEach(operation => {
             switch (operation.toLowerCase()) {
-                case 'format': 
+                case 'f': 
                     var SUPPORTED_FORMATS = ['auto', 'jpeg', 'webp', 'avif', 'png', 'svg', 'gif'];
                     if (request.querystring[operation]['value'] && SUPPORTED_FORMATS.includes(request.querystring[operation]['value'].toLowerCase())) {
                         var format = request.querystring[operation]['value'].toLowerCase(); // normalize to lowercase
@@ -26,30 +26,30 @@ function handler(event) {
                         normalizedOperations['format'] = format;
                     }
                     break;
-                case 'width':
+                case 'w':
                     if (request.querystring[operation]['value']) {
                         var width = parseInt(request.querystring[operation]['value']);
                         if (!isNaN(width) && (width > 0)) {
                             // you can protect the Lambda function by setting a max value, e.g. if (width > 4000) width = 4000;
-                            normalizedOperations['width'] = width.toString();
+                            normalizedOperations['w'] = width.toString();
                         }
                     }
                     break;
-                case 'height':
+                case 'h':
                     if (request.querystring[operation]['value']) {
                         var height = parseInt(request.querystring[operation]['value']);
                         if (!isNaN(height) && (height > 0)) {
                             // you can protect the Lambda function by setting a max value, e.g. if (height > 4000) height = 4000;
-                            normalizedOperations['height'] = height.toString();
+                            normalizedOperations['h'] = height.toString();
                         }
                     }
                     break;
-                case 'quality':
+                case 'q':
                     if (request.querystring[operation]['value']) {
                         var quality = parseInt(request.querystring[operation]['value']);
                         if (!isNaN(quality) && (quality > 0)) {
                             if (quality > 100) quality = 100;
-                            normalizedOperations['quality'] = quality.toString();
+                            normalizedOperations['q'] = quality.toString();
                         }
                     }
                     break;
@@ -60,19 +60,19 @@ function handler(event) {
         if (Object.keys(normalizedOperations).length > 0) {
             // put them in order
             var normalizedOperationsArray = [];
-            if (normalizedOperations.format) normalizedOperationsArray.push('format='+normalizedOperations.format);
-            if (normalizedOperations.quality) normalizedOperationsArray.push('quality='+normalizedOperations.quality);
-            if (normalizedOperations.width) normalizedOperationsArray.push('width='+normalizedOperations.width);
-            if (normalizedOperations.height) normalizedOperationsArray.push('height='+normalizedOperations.height);
+            if (normalizedOperations.format) normalizedOperationsArray.push('f='+normalizedOperations.format);
+            if (normalizedOperations.quality) normalizedOperationsArray.push('q='+normalizedOperations.quality);
+            if (normalizedOperations.width) normalizedOperationsArray.push('w='+normalizedOperations.width);
+            if (normalizedOperations.height) normalizedOperationsArray.push('h='+normalizedOperations.height);
             request.uri = originalImagePath + '/' + normalizedOperationsArray.join(',');     
         } else {
             // If no valid operation is found, flag the request with /original path suffix
-            request.uri = originalImagePath + '/original';     
+            request.uri = originalImagePath + '/';     
         }
 
     } else {
         // If no query strings are found, flag the request with /original path suffix
-        request.uri = originalImagePath + '/original'; 
+        request.uri = originalImagePath + '/'; 
     }
     // remove query strings
     request['querystring'] = {};

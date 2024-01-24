@@ -127,7 +127,7 @@ async function transformImage(originalImagePath, operationsPrefix) {
 
     // upload transformed image back to S3 if required in the architecture
 	try {
-		const putImageCommand = new PutObjectCommand({
+		await S3.putObject({
 			Body: transformedImage,
 			Bucket: S3_TRANSFORMED_IMAGE_BUCKET,
 			Key: originalImagePath + '/' + operationsPrefix.replace('org,f=org','').replace('org,','').replace(',f=org',''),
@@ -135,8 +135,7 @@ async function transformImage(originalImagePath, operationsPrefix) {
 			Metadata: {
 				'cache-control': TRANSFORMED_IMAGE_CACHE_TTL,
 			},
-		})
-        await s3Client.send(putImageCommand);
+		}).promise();
         if (imageTooBig) {
             return {
                 statusCode: 302,
