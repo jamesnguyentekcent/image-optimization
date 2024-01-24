@@ -1,10 +1,11 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: MIT-0
 
-import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
-import Sharp from 'sharp';
+const AWS = require('aws-sdk');
+const https = require('https');
+const Sharp = require('sharp');
 
-const s3Client = new S3Client();
+const S3 = new AWS.S3({ signatureVersion: 'v4', httpOptions: { agent: new https.Agent({ keepAlive: true }) } });
 const S3_ORIGINAL_IMAGE_BUCKET = process.env.originalImageBucketName;
 const S3_TRANSFORMED_IMAGE_BUCKET = process.env.transformedImageBucketName;
 const TRANSFORMED_IMAGE_CACHE_TTL = process.env.transformedImageCacheTTL;
@@ -18,9 +19,10 @@ const ALLOW_TRANSFORM_IMAGE_HEIGHTS = process.env.allowTransformImageHeights;
 const SECRET_KEY = process.env.secretKey;
 const MAX_IMAGE_SIZE = parseInt(process.env.maxImageSize);
 
-export const handler = async (event) => {
+exports.handler = async (event) => {
     let originalImagePath;
     let operationsPrefix;
+    console.log('Start the Image Optimization')
 	// Get the object from the event and show its content type
     if(event.Records != null && event.Records[0].eventName.includes('ObjectCreated'))
     {
@@ -61,19 +63,15 @@ export const handler = async (event) => {
 // Handling image transformations
 async function transformImage(originalImagePath, operationsPrefix) {
 	// Downloading original image
-    let originalImageBody;
+    let originalImage;
     let contentType;
     try {
-        const getOriginalImageCommand = new GetObjectCommand({ Bucket: S3_ORIGINAL_IMAGE_BUCKET, Key: originalImagePath });
-        const getOriginalImageCommandOutput = await s3Client.send(getOriginalImageCommand);
-        console.log(`Got response from S3 for ${originalImagePath}`);
-
-        originalImageBody = getOriginalImageCommandOutput.Body.transformToByteArray();
-        contentType = getOriginalImageCommandOutput.ContentType;
+        originalImage = await S3.getObject({ Bucket: S3_ORIGINAL_IMAGE_BUCKET, Key: originalImagePath }).promise();
+        contentType = originalImage.ContentType;
     } catch (error) {
         return sendError(500, 'Error downloading original image', error);
     }
-    let transformedImage = Sharp(await originalImageBody, { failOn: 'none', animated: true });
+    let transformedImage = Sharp(originalImage.Body, { failOn: 'none', animated: true });
     // Get image orientation to rotate if needed
     const imageMetadata = await transformedImage.metadata();
     // Execute the requested operations 

@@ -82,7 +82,7 @@ export class ImageOptimizationStack extends Stack {
       enforceSSL: true,
       autoDeleteObjects: true,
     });
-    new s3deploy.BucketDeployment(this, 'DeployWebsite', {
+    new s3deploy.BucketDeployment(this, 'deploy-sample-images', {
       sources: [s3deploy.Source.asset('./image-sample')],
       destinationBucket: originalImageBucket,
       destinationKeyPrefix: 'sample/',
@@ -131,7 +131,7 @@ export class ImageOptimizationStack extends Stack {
     // Create Lambda for image processing
     var lambdaProps = {
       functionName: SERVICE_PREFIX + '-image-processing',
-      runtime: lambda.Runtime.NODEJS_20_X,
+      runtime: lambda.Runtime.NODEJS_16_X,
       handler: 'index.handler',
       code: lambda.Code.fromAsset('functions/image-processing'),
       timeout: Duration.seconds(parseInt(LAMBDA_TIMEOUT)),
