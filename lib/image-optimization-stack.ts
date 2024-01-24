@@ -5,10 +5,9 @@ import { Fn, Stack, StackProps, RemovalPolicy, aws_s3 as s3, aws_s3_deployment a
 import { Construct } from 'constructs';
 import { getOriginShieldRegion } from './origin-shield';
 import { createHash } from 'crypto';
-import * as cdk from 'aws-cdk-lib';
 
 // Stack Parameters
-var SERVICE_PREFIX = cdk.Aws.STACK_NAME;
+var SERVICE_PREFIX = 'spl-tp-crafter';
 
 // Parameters of S3 bucket where original images are stored
 var S3_IMAGE_BUCKET_NAME: string;
