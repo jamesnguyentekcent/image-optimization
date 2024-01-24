@@ -7,7 +7,7 @@ import { getOriginShieldRegion } from './origin-shield';
 import { createHash } from 'crypto';
 
 // Stack Parameters
-var SERVICE_PREFIX = 'spl-tp-crafter';
+var SERVICE_PREFIX = 'spl-uat-taikooplace';
 
 // Parameters of S3 bucket where original images are stored
 var S3_IMAGE_BUCKET_NAME: string;
