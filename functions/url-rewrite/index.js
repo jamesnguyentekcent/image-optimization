@@ -23,7 +23,7 @@ function handler(event) {
                                 } 
                             }
                         }
-                        normalizedOperations['format'] = format;
+                        normalizedOperations['f'] = format;
                     }
                     break;
                 case 'w':
@@ -60,19 +60,19 @@ function handler(event) {
         if (Object.keys(normalizedOperations).length > 0) {
             // put them in order
             var normalizedOperationsArray = [];
-            if (normalizedOperations.format) normalizedOperationsArray.push('f='+normalizedOperations.format);
-            if (normalizedOperations.quality) normalizedOperationsArray.push('q='+normalizedOperations.quality);
-            if (normalizedOperations.width) normalizedOperationsArray.push('w='+normalizedOperations.width);
-            if (normalizedOperations.height) normalizedOperationsArray.push('h='+normalizedOperations.height);
+            if (normalizedOperations.f) normalizedOperationsArray.push('f='+normalizedOperations.f);
+            if (normalizedOperations.q) normalizedOperationsArray.push('q='+normalizedOperations.q);
+            if (normalizedOperations.w) normalizedOperationsArray.push('w='+normalizedOperations.w);
+            if (normalizedOperations.h) normalizedOperationsArray.push('h='+normalizedOperations.h);
             request.uri = originalImagePath + '/' + normalizedOperationsArray.join(',');     
         } else {
             // If no valid operation is found, flag the request with /original path suffix
-            request.uri = originalImagePath + '/';     
+            request.uri = originalImagePath + '/original';     
         }
 
     } else {
         // If no query strings are found, flag the request with /original path suffix
-        request.uri = originalImagePath + '/'; 
+        request.uri = originalImagePath + '/original'; 
     }
     // remove query strings
     request['querystring'] = {};

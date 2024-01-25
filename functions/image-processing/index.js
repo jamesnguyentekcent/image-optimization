@@ -127,10 +127,13 @@ async function transformImage(originalImagePath, operationsPrefix) {
 
     // upload transformed image back to S3 if required in the architecture
 	try {
+        var shortenOperationsPrefix = operationsPrefix.replace('org,f=org','').replace('org,','').replace(',f=org','');
+        if (shortenOperationsPrefix === '')
+            shortenOperationsPrefix = 'original';
 		await S3.putObject({
 			Body: transformedImage,
 			Bucket: S3_TRANSFORMED_IMAGE_BUCKET,
-			Key: originalImagePath + '/' + operationsPrefix.replace('org,f=org','').replace('org,','').replace(',f=org',''),
+			Key: originalImagePath + '/' + shortenOperationsPrefix,
 			ContentType: contentType,
 			Metadata: {
 				'cache-control': TRANSFORMED_IMAGE_CACHE_TTL,
