@@ -19,6 +19,8 @@ const ALLOW_TRANSFORM_IMAGE_HEIGHTS = process.env.allowTransformImageHeights;
 const SECRET_KEY = process.env.secretKey;
 const MAX_IMAGE_SIZE = parseInt(process.env.maxImageSize);
 
+const SUPPORTED_EXTENSIONS = ['.jpg', '.jpeg', '.webp', '.avif', '.png'];
+const TRANSFORMED_FOLDER_PREFIX = "transformed"
 exports.handler = async (event) => {
     let originalImagePath;
     let operationsPrefix;
@@ -26,19 +28,28 @@ exports.handler = async (event) => {
 	// Get the object from the event and show its content type
     if(event.Records != null && event.Records[0].eventName.includes('ObjectCreated'))
     {
-		originalImagePath = event.Records[0].s3.object.key;
-		// Expected sample value: 'org|w=360,h=270|h=480|w=1280'
-		const autoTransformImageSizes = AUTO_TRANSFORM_IMAGE_SIZES.split('|');
-		// Expected sample value: 'org|jpeg|avif|webp'
-		const autoTransformImageFormats = AUTO_TRANSFORM_IMAGE_FORMATS.split('|');
-		console.log('S3 Upload Request: ', originalImagePath, autoTransformImageSizes, autoTransformImageFormats)
-	
-		// Handling image transformations
-		for (const size of autoTransformImageSizes) {
-			for (const format of autoTransformImageFormats) {
-				const operationsPrefix = `${size},f=${format}`;
-                await transformImage(originalImagePath, operationsPrefix);				
-			}
+        originalImagePath = event.Records[0].s3.object.key;
+        var isTransformSupported = false;
+        SUPPORTED_EXTENSIONS.forEach(function(extension) {
+            if (originalImagePath.endsWith(extension)) {
+                isTransformSupported = true;
+            }
+        })
+        // Skip sandbox mode, only trigger when user publish the image
+		if (isTransformSupported && !originalImagePath.startsWith("sandbox/")) {
+    		// Expected sample value: 'org|w=360,h=270|h=480|w=1280'
+    		const autoTransformImageSizes = AUTO_TRANSFORM_IMAGE_SIZES.split('|');
+    		// Expected sample value: 'org|jpeg|avif|webp'
+    		const autoTransformImageFormats = AUTO_TRANSFORM_IMAGE_FORMATS.split('|');
+    		console.log('S3 Upload Request: ', originalImagePath, autoTransformImageSizes, autoTransformImageFormats)
+    	
+    		// Handling image transformations
+    		for (const size of autoTransformImageSizes) {
+    			for (const format of autoTransformImageFormats) {
+    				const operationsPrefix = `${size},f=${format}`;
+                    await transformImage(originalImagePath, operationsPrefix);				
+    			}
+    		}
 		}
     } else {
 		// First validate if the request is coming from CloudFront
@@ -55,7 +66,7 @@ exports.handler = async (event) => {
 		imagePathArray.shift();
 		originalImagePath = imagePathArray.join('/');
 		// Handling image transformations
-		console.log('On-the-fly Request: ', originalImagePath, operationsPrefix)
+		console.log('On-the-fly Request: ', originalImagePath, operationsPrefix, event.requestContext)
 		return await transformImage(originalImagePath, operationsPrefix);
 	}
 };
@@ -68,10 +79,12 @@ async function transformImage(originalImagePath, operationsPrefix) {
     try {
         originalImage = await S3.getObject({ Bucket: S3_ORIGINAL_IMAGE_BUCKET, Key: originalImagePath }).promise();
         contentType = originalImage.ContentType;
+		console.log('JAMES-Test: ', originalImage)
     } catch (error) {
         return sendError(500, 'Error downloading original image', error);
     }
     let transformedImage = Sharp(originalImage.Body, { failOn: 'none', animated: true });
+	
     // Get image orientation to rotate if needed
     const imageMetadata = await transformedImage.metadata();
     // Execute the requested operations 
@@ -84,6 +97,8 @@ async function transformImage(originalImagePath, operationsPrefix) {
 		{
             var imageTransformWidth = parseInt(operationsJSON['w'])
             var imageTransformHeight = parseInt(operationsJSON['h'])
+			var imageTransformMaxWidth = parseInt(operationsJSON['mw'])
+            var imageTransformMaxHeight = parseInt(operationsJSON['mh'])
             if (ALLOW_TRANSFORM_IMAGE_WIDTHS !== '' && ALLOW_TRANSFORM_IMAGE_HEIGHTS !== '')
             {
                 // 	If the resizing image size is not supported, returned error. Expected sample value: '360|270|480|1280'
@@ -93,8 +108,18 @@ async function transformImage(originalImagePath, operationsPrefix) {
                     return sendError(404, 'Do not support this output size.', '')
                 }
             }
-			if (operationsJSON['w']) resizingOptions.width = imageTransformWidth;
-			if (operationsJSON['h']) resizingOptions.height = imageTransformHeight;
+			if (operationsJSON['w']) resizingOptions.width = Math.min(imageTransformWidth || imageMetadata.width, imageMetadata.width);
+			if (operationsJSON['h']) resizingOptions.height = Math.min(imageTransformHeight || imageMetadata.height, imageMetadata.height);
+			if (operationsJSON['mw']) 
+			{
+				resizingOptions.width = Math.min(imageTransformMaxWidth || imageMetadata.width, imageMetadata.width);
+				resizingOptions.fit = 'inside';
+			}
+			if (operationsJSON['mh']) 
+			{
+				resizingOptions.height = Math.min(imageTransformMaxHeight || imageMetadata.height, imageMetadata.height);
+				resizingOptions.fit = 'inside';
+			}
 			if (resizingOptions) transformedImage = transformedImage.resize(resizingOptions);
 			// check if rotation is needed
 			if (imageMetadata.orientation) transformedImage = transformedImage.rotate();
@@ -133,7 +158,7 @@ async function transformImage(originalImagePath, operationsPrefix) {
 		await S3.putObject({
 			Body: transformedImage,
 			Bucket: S3_TRANSFORMED_IMAGE_BUCKET,
-			Key: originalImagePath + '/' + shortenOperationsPrefix,
+			Key: TRANSFORMED_FOLDER_PREFIX + '/' + originalImagePath + '/' + shortenOperationsPrefix,
 			ContentType: contentType,
 			Metadata: {
 				'cache-control': TRANSFORMED_IMAGE_CACHE_TTL,
@@ -144,8 +169,7 @@ async function transformImage(originalImagePath, operationsPrefix) {
                 statusCode: 302,
                 headers: {
                     'Location': '/' + originalImagePath + '?' + operationsPrefix.replace(/,/g, "&"),
-                    'Cache-Control': 'private,no-store',
-                    'Server-Timing': timingLog
+                    'Cache-Control': 'private,no-store'
                 }
             };
         }
