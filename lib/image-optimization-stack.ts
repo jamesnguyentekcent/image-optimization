@@ -67,7 +67,7 @@ export class ImageOptimizationStack extends Stack {
 
     // create original image bucket
     originalImageBucket = new s3.Bucket(this, 's3', {
-      bucketName: SERVICE_PREFIX + '-s3-original',
+      bucketName: SERVICE_PREFIX + '-s3',
       removalPolicy: RemovalPolicy.DESTROY,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       encryption: s3.BucketEncryption.S3_MANAGED,
