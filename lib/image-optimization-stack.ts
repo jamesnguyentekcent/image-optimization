@@ -18,9 +18,6 @@ var ALLOW_TRANSFORM_IMAGE_HEIGHTS = '';
 // CloudFront parameters
 var CLOUDFRONT_ORIGIN_SHIELD_REGION = getOriginShieldRegion(process.env.AWS_REGION || process.env.CDK_DEFAULT_REGION || 'us-east-1');
 var CLOUDFRONT_CORS_ENABLED = 'true';
-// Parameters of transformed images
-var S3_TRANSFORMED_IMAGE_EXPIRATION_DURATION = '90';
-var S3_TRANSFORMED_IMAGE_CACHE_TTL = 'max-age=31622400';
 // Max image size in bytes. If generated images are stored on S3, bigger images are generated, stored on S3
 // and request is redirect to the generated image. Otherwise, an application error is sent.
 var MAX_IMAGE_SIZE = '4700000';
@@ -38,8 +35,6 @@ type ImageDeliveryCacheBehaviorConfig = {
 
 type LambdaEnv = {
   originalImageBucketName: string,
-  transformedImageBucketName?: any;
-  transformedImageCacheTTL: string,
   secretKey: string,
   maxImageSize: string,
   autoTransformImageSizes: string,
@@ -53,8 +48,6 @@ export class ImageOptimizationStack extends Stack {
     super(scope, id, props);
 
     // Change stack parameters based on provided context
-    S3_TRANSFORMED_IMAGE_EXPIRATION_DURATION = this.node.tryGetContext('S3_TRANSFORMED_IMAGE_EXPIRATION_DURATION') || S3_TRANSFORMED_IMAGE_EXPIRATION_DURATION;
-    S3_TRANSFORMED_IMAGE_CACHE_TTL = this.node.tryGetContext('S3_TRANSFORMED_IMAGE_CACHE_TTL') || S3_TRANSFORMED_IMAGE_CACHE_TTL;
     S3_IMAGE_BUCKET_NAME = this.node.tryGetContext('S3_IMAGE_BUCKET_NAME') || S3_IMAGE_BUCKET_NAME;
     AUTO_TRANSFORM_IMAGE_SIZES = this.node.tryGetContext('AUTO_TRANSFORM_IMAGE_SIZES') || AUTO_TRANSFORM_IMAGE_SIZES;
     AUTO_TRANSFORM_IMAGE_FORMATS = this.node.tryGetContext('AUTO_TRANSFORM_IMAGE_FORMATS') || AUTO_TRANSFORM_IMAGE_FORMATS;
@@ -71,7 +64,6 @@ export class ImageOptimizationStack extends Stack {
 
     // For the bucket having original images, either use an external one, or create one with some samples photos.
     var originalImageBucket;
-    var transformedImageBucket;
 
     // create original image bucket
     originalImageBucket = new s3.Bucket(this, 's3-original', {
@@ -90,26 +82,11 @@ export class ImageOptimizationStack extends Stack {
     new CfnOutput(this, 'OriginalImagesS3Bucket', {
       description: 'S3 bucket where original images are stored',
       value: originalImageBucket.bucketName
-    });
-
-
-    // create bucket for transformed images
-    transformedImageBucket = new s3.Bucket(this, 's3-transformed', {
-	  bucketName: SERVICE_PREFIX + '-s3-transformed',
-      removalPolicy: RemovalPolicy.DESTROY,
-      autoDeleteObjects: true,
-      lifecycleRules: [
-        {
-          expiration: Duration.days(parseInt(S3_TRANSFORMED_IMAGE_EXPIRATION_DURATION)),
-        },
-      ],
-    });
-    
+    });    
 
     // prepare env variable for Lambda 
     var lambdaEnv: LambdaEnv = {
       originalImageBucketName: originalImageBucket.bucketName,
-      transformedImageCacheTTL: S3_TRANSFORMED_IMAGE_CACHE_TTL,
       secretKey: SECRET_KEY,
       maxImageSize: MAX_IMAGE_SIZE,
       autoTransformImageSizes: AUTO_TRANSFORM_IMAGE_SIZES,
@@ -117,11 +94,10 @@ export class ImageOptimizationStack extends Stack {
       allowTransformImageWidths: ALLOW_TRANSFORM_IMAGE_WIDTHS,
       allowTransformImageHeights: ALLOW_TRANSFORM_IMAGE_HEIGHTS,
     };
-    if (transformedImageBucket) lambdaEnv.transformedImageBucketName = transformedImageBucket.bucketName;
 
     // IAM policy to read from the S3 bucket containing the original images
     const s3ReadOriginalImagesPolicy = new iam.PolicyStatement({
-      actions: ['s3:GetObject'],
+      actions: ['s3:GetObject', 's3:PutObject'],
       resources: ['arn:aws:s3:::' + originalImageBucket.bucketName + '/*'],
     });
 
@@ -151,42 +127,26 @@ export class ImageOptimizationStack extends Stack {
 
     // Create a CloudFront origin: S3 with fallback to Lambda when image needs to be transformed, otherwise with Lambda as sole origin
     var imageOrigin;
+	imageOrigin = new origins.OriginGroup({
+	  primaryOrigin: new origins.S3Origin(originalImageBucket, {
+	    originShieldRegion: CLOUDFRONT_ORIGIN_SHIELD_REGION,
+	  }),
+	  fallbackOrigin: new origins.HttpOrigin(imageProcessingDomainName, {
+	    originShieldRegion: CLOUDFRONT_ORIGIN_SHIELD_REGION,
+	    customHeaders: {
+		  'x-origin-secret-header': SECRET_KEY,
+	    },
+	  }),
+	  fallbackStatusCodes: [403, 500, 503, 504],
+	});
 
-    if (transformedImageBucket) {
-      imageOrigin = new origins.OriginGroup({
-        primaryOrigin: new origins.S3Origin(transformedImageBucket, {
-          originShieldRegion: CLOUDFRONT_ORIGIN_SHIELD_REGION,
-        }),
-        fallbackOrigin: new origins.HttpOrigin(imageProcessingDomainName, {
-          originShieldRegion: CLOUDFRONT_ORIGIN_SHIELD_REGION,
-          customHeaders: {
-            'x-origin-secret-header': SECRET_KEY,
-          },
-        }),
-        fallbackStatusCodes: [403, 500, 503, 504],
-      });
 
-      // write policy for Lambda on the s3 bucket for transformed images
-      var s3WriteTransformedImagesPolicy = new iam.PolicyStatement({
-        actions: ['s3:PutObject'],
-        resources: ['arn:aws:s3:::' + transformedImageBucket.bucketName + '/*'],
-      });
-      iamPolicyStatements.push(s3WriteTransformedImagesPolicy);
-
-      // write log policy for Lambda on the s3 bucket
-      var s3LogPolicy = new iam.PolicyStatement({
-        actions: ['logs:PutLogEvents', 'logs:CreateLogGroup', 'logs:CreateLogStream'],
-        resources: ['arn:aws:logs:*:*:*'],
-      });
-      iamPolicyStatements.push(s3LogPolicy);
-    } else {
-      imageOrigin = new origins.HttpOrigin(imageProcessingDomainName, {
-        originShieldRegion: CLOUDFRONT_ORIGIN_SHIELD_REGION,
-        customHeaders: {
-          'x-origin-secret-header': SECRET_KEY,
-        },
-      });
-    }
+	// write log policy for Lambda on the s3 bucket
+	var s3LogPolicy = new iam.PolicyStatement({
+	actions: ['logs:PutLogEvents', 'logs:CreateLogGroup', 'logs:CreateLogStream'],
+	resources: ['arn:aws:logs:*:*:*'],
+	});
+	iamPolicyStatements.push(s3LogPolicy);
 
     // attach iam policy to the role assumed by Lambda
     imageProcessing.role?.attachInlinePolicy(
