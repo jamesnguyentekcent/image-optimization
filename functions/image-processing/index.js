@@ -35,25 +35,27 @@ exports.handler = async (event) => {
     // Get the object from the event and show its content type
     if (event.Records != null && event.Records[0].eventName.includes('ObjectCreated')) {
         originalImagePath = event.Records[0].s3.object.key;
-        var isTransformSupported = false;
-        SUPPORTED_EXTENSIONS.forEach(function(extension) {
-            if (originalImagePath.endsWith(extension)) {
-                isTransformSupported = true;
-            }
-        })
-        // Skip sandbox mode when user uploads image, only trigger when user publishes the image
-        if (isTransformSupported && !originalImagePath.startsWith("sandbox/")) {
-            // Expected sample value: 'org|w=360,h=270|h=480|w=1280'
-            const autoTransformImageSizes = AUTO_TRANSFORM_IMAGE_SIZES.split('|');
-            // Expected sample value: 'org|jpeg|avif|webp'
-            const autoTransformImageFormats = AUTO_TRANSFORM_IMAGE_FORMATS.split('|');
-            console.log('S3 Upload Request: ', originalImagePath, autoTransformImageSizes)
+        // Skip sandbox mode when user upload image, only trigger when user publish the image
+        if (!originalImagePath.startsWith("sandbox/")) {
+            var isTransformSupported = false;
+            SUPPORTED_EXTENSIONS.forEach(function(extension) {
+                if (originalImagePath.endsWith(extension)) {
+                    isTransformSupported = true;
+                }
+            })
+            if (isTransformSupported) {
+                // Expected sample value: 'org|w=360,h=270|h=480|w=1280'
+                const autoTransformImageSizes = AUTO_TRANSFORM_IMAGE_SIZES.split('|');
+                // Expected sample value: 'org|jpeg|avif|webp'
+                const autoTransformImageFormats = AUTO_TRANSFORM_IMAGE_FORMATS.split('|');
+                console.log('S3 Upload Request: ', originalImagePath, autoTransformImageSizes, autoTransformImageFormats)
 
-            // Handling image transformations
-            for (const size of autoTransformImageSizes) {
-                for (const format of autoTransformImageFormats) {
-                    const operationsPrefix = `${size},f=${format}`;
-                    await transformImage(originalImagePath, operationsPrefix);
+                // Handling image transformations
+                for (const size of autoTransformImageSizes) {
+                    for (const format of autoTransformImageFormats) {
+                        const operationsPrefix = `${size},f=${format}`;
+                        await transformImage(originalImagePath, operationsPrefix);
+                    }
                 }
             }
         }
@@ -70,7 +72,7 @@ exports.handler = async (event) => {
 
         // get the original image path sample/1.jpg
         imagePathArray.shift();
-        originalImagePath = imagePathArray.join('/');
+        originalImagePath = imagePathArray.join('/').replace(TRANSFORMED_FOLDER_PREFIX + '/', '');
         // Handling image transformations
         console.log('On-the-fly Request: ', originalImagePath, operationsPrefix, event.requestContext)
         return await transformImage(originalImagePath, operationsPrefix);
@@ -180,7 +182,7 @@ async function transformImage(originalImagePath, operationsPrefix) {
         await S3.putObject({
             Body: transformedImage,
             Bucket: S3_TRANSFORMED_IMAGE_BUCKET,
-            Key: TRANSFORMED_FOLDER_PREFIX + '/' + originalImagePath + '/' + shortenOperationsPrefix,
+            Key: originalImagePath.replace('/static-assets/', '/' + TRANSFORMED_FOLDER_PREFIX + '/static-assets/') + '/' + shortenOperationsPrefix,
             ContentType: contentType,
             Metadata: {
                 'cache-control': TRANSFORMED_IMAGE_CACHE_TTL,
