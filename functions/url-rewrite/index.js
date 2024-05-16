@@ -6,7 +6,7 @@ function handler(event) {
     var originalImagePath = request.uri;
     var SUPPORTED_FORMATS = ['auto', 'jpg', 'jpeg', 'webp', 'avif', 'png'];
     var SUPPORTED_EXTENSIONS = ['.jpg', '.jpeg', '.webp', '.avif', '.png'];
-    var TRANSFORMED_FOLDER_PREFIX = "transformed"
+    var TRANSFORMED_FOLDER_PREFIX = "transformed";
     var isTransformSupported = false;
     SUPPORTED_EXTENSIONS.forEach(function(format) {
         if (originalImagePath.endsWith(format)) {
@@ -103,9 +103,12 @@ function handler(event) {
             // If no query strings are found, flag the request with /original path suffix
             request.uri = originalImagePath + '/original'; 
         }
-        request.uri = TRANSFORMED_FOLDER_PREFIX + request.uri
+        request.uri = '/' + TRANSFORMED_FOLDER_PREFIX + request.uri;
+        // remove query strings
+        request['querystring'] = {};
     }
-    // remove query strings
-    request['querystring'] = {};
+    if(request.cookies.crafterSite.value){
+        request.uri = '/' + request.cookies.crafterSite.value + request.uri;
+    }
     return request;
 }
