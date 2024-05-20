@@ -36,7 +36,7 @@ exports.handler = async (event) => {
     if (event.Records != null && event.Records[0].eventName.includes('ObjectCreated')) {
         originalImagePath = event.Records[0].s3.object.key;
         // Skip sandbox mode when user upload image, only trigger when user publish the image
-        if (!originalImagePath.startsWith("sandbox/")) {
+        if (!originalImagePath.includes("sandbox/static-assets")) {
             var isTransformSupported = false;
             SUPPORTED_EXTENSIONS.forEach(function(extension) {
                 if (originalImagePath.endsWith(extension)) {
