@@ -28,22 +28,22 @@ const MAX_IMAGE_SIZE = parseInt(process.env.maxImageSize);
 
 const SUPPORTED_EXTENSIONS = ['.jpg', '.jpeg', '.webp', '.avif', '.png'];
 const TRANSFORMED_FOLDER_PREFIX = "transformed"
+
 exports.handler = async (event) => {
     let originalImagePath;
     let operationsPrefix;
-    console.log('Start the Image Optimization')
+    console.log('Start the Image Optimization', event)
     // Get the object from the event and show its content type
-    if (event.Records != null && event.Records[0].eventName.includes('ObjectCreated')) {
+    if (event.Records != null) {
         originalImagePath = event.Records[0].s3.object.key;
-        // Skip sandbox mode when user upload image, only trigger when user publish the image
         if (!originalImagePath.includes("sandbox/static-assets")) {
-            var isTransformSupported = false;
+            var isTransformExtension = false;
             SUPPORTED_EXTENSIONS.forEach(function(extension) {
                 if (originalImagePath.endsWith(extension)) {
-                    isTransformSupported = true;
+                    isTransformExtension = true;
                 }
             })
-            if (isTransformSupported) {
+            if (isTransformExtension && event.Records[0].eventName.includes('ObjectCreated')) {
                 // Expected sample value: 'org|w=360,h=270|h=480|w=1280'
                 const autoTransformImageSizes = AUTO_TRANSFORM_IMAGE_SIZES.split('|');
                 // Expected sample value: 'org|jpeg|avif|webp'
@@ -56,6 +56,19 @@ exports.handler = async (event) => {
                         const operationsPrefix = `${size},f=${format}`;
                         await transformImage(originalImagePath, operationsPrefix);
                     }
+                }
+            }
+            
+            // Avoid deletion request triggering multiple times
+            if (isTransformExtension && event.Records[0].eventName.includes('ObjectRemoved:Delete')
+                && !originalImagePath.includes('/' + TRANSFORMED_FOLDER_PREFIX + '/static-assets/')) {
+                console.log('S3 Delete Request: ', originalImagePath)
+                var transformedImagePrefix = originalImagePath.replace('/static-assets/', '/' + TRANSFORMED_FOLDER_PREFIX + '/static-assets/') + '/'
+                try {
+                    await deleteS3Directory(S3_ORIGINAL_IMAGE_BUCKET, transformedImagePrefix);
+                    console.log('S3 Deletion Completed: '+ transformedImagePrefix)
+                } catch (error) {
+                    console.error('Error while deleting the image: ', error);
                 }
             }
         }
@@ -222,4 +235,28 @@ function sendError(statusCode, body, error) {
         statusCode,
         body
     };
+}
+
+async function deleteS3Directory(bucket, prefix) {
+    const listParams = {
+        Bucket: bucket,
+        Prefix: prefix
+    };
+
+    const listedObjects = await S3.listObjectsV2(listParams).promise();
+
+    if (listedObjects.Contents.length === 0) return;
+
+    const deleteParams = {
+        Bucket: bucket,
+        Delete: { Objects: [] }
+    };
+
+    listedObjects.Contents.forEach(({ Key }) => {
+        deleteParams.Delete.Objects.push({ Key });
+    });
+
+    await S3.deleteObjects(deleteParams).promise();
+
+    if (listedObjects.IsTruncated) await deleteS3Directory(bucket, prefix);
 }
