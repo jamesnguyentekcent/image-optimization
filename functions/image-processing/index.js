@@ -32,7 +32,7 @@ const TRANSFORMED_FOLDER_PREFIX = "transformed"
 exports.handler = async (event) => {
     let originalImagePath;
     let operationsPrefix;
-    console.log('Start the Image Optimization', event)
+    console.log('Start the Image Optimization')
     // Get the object from the event and show its content type
     if (event.Records != null) {
         originalImagePath = event.Records[0].s3.object.key;
