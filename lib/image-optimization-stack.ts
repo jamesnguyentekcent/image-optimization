@@ -96,13 +96,18 @@ export class ImageOptimizationStack extends Stack {
     };
 
     // IAM policy to read from the S3 bucket containing the original images
-    const s3ReadOriginalImagesPolicy = new iam.PolicyStatement({
-      actions: ['s3:GetObject', 's3:PutObject'],
+    const s3GetSetImagesPolicy = new iam.PolicyStatement({
+      actions: ['s3:GetObject', 's3:PutObject', 's3:DeleteObject'],
       resources: ['arn:aws:s3:::' + originalImageBucket.bucketName + '/*'],
     });
 
+    const s3ListBucketPolicy = new iam.PolicyStatement({
+      actions: ['s3:ListBucket'],
+      resources: ['arn:aws:s3:::' + originalImageBucket.bucketName],
+    });
+
     // statements of the IAM policy to attach to Lambda
-    var iamPolicyStatements = [s3ReadOriginalImagesPolicy];
+    var iamPolicyStatements = [s3GetSetImagesPolicy, s3ListBucketPolicy];
 
     // Create Lambda for image processing
     var lambdaProps = {
