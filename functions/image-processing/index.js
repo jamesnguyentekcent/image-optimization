@@ -49,7 +49,15 @@ exports.handler = async (event) => {
                 // Expected sample value: 'org|jpeg|avif|webp'
                 const autoTransformImageFormats = AUTO_TRANSFORM_IMAGE_FORMATS.split('|');
                 console.log('S3 Upload Request: ', originalImagePath, autoTransformImageSizes, autoTransformImageFormats)
-
+                
+                var transformedImagePrefix = originalImagePath.replace('/static-assets/', '/' + TRANSFORMED_FOLDER_PREFIX + '/static-assets/') + '/'
+                try {
+                    await deleteS3Directory(S3_ORIGINAL_IMAGE_BUCKET, transformedImagePrefix);
+                    console.log('S3 Deletion Completed: '+ transformedImagePrefix)
+                } catch (error) {
+                    console.error('Error while deleting the image: ', error);
+                }
+                
                 // Handling image transformations
                 for (const size of autoTransformImageSizes) {
                     for (const format of autoTransformImageFormats) {
@@ -104,7 +112,7 @@ async function transformImage(originalImagePath, operationsPrefix) {
         }).promise();
         contentType = originalImage.ContentType;
     } catch (error) {
-        return sendError(500, 'Error downloading original image', error);
+        return sendError(404, 'Error downloading original image', error);
     }
     let transformedImage = Sharp(originalImage.Body, {
         failOn: 'none',
